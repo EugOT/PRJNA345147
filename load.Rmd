@@ -1,0 +1,61 @@
+---
+title: "R Notebook"
+output: html_notebook
+editor_options: 
+  chunk_output_type: inline
+---
+
+
+
+```{r}
+suppressPackageStartupMessages({
+    library(readr)
+    library(stringr)
+    library(dplyr)
+    library(magrittr)
+    library(SingleCellExperiment)
+    library(scater)
+    library(BiocParallel)
+    library(biomaRt)
+    library(Seurat)
+    library(SeuratDisk)
+})
+
+sce <- read_rds("chen2017.rds")
+assayNames(sce) <- "counts"
+counts(sce) <- as(counts(sce), "dgCMatrix")
+sum(duplicated(rownames(sce))) # 0
+
+sce$cell_type %>% table()
+sce <- logNormCounts(sce)
+dim(logcounts(sce))
+assays(sce) <- assays(sce)[c("counts", "logcounts")]
+
+keep <-
+        sce$cell_type %>%
+        table() %>%
+        names() %>%
+        .[stringr::str_detect(string = .,
+                              pattern = "zothers",
+                              negate = T)]
+    
+srt <- as.Seurat(sce)
+srt %<>% RenameCells(new.names = str_c("chen2017_", colnames(srt)))
+rownames(srt@meta.data) <- colnames(srt)
+Idents(srt) <- "cell_type"
+srt %<>% subset(idents = keep %>% .[. %in% Idents(srt)]) 
+
+srt$age <- "P60"
+srt$tech <- "dropseq"
+srt$batch <- colnames(srt) %>% str_split_fixed(pattern = "_", n = 3) %>% .[, 2] %>% str_extract(pattern = "B\\d")
+srt$diet <- colnames(srt) %>% str_split_fixed(pattern = "_", n = 3) %>% .[, 3]
+srt$orig.ident <- str_c(srt$study_id, srt$batch, "HPT", sep = "_")
+
+glimpse(srt@meta.data)
+table(srt$orig.ident)
+SaveH5Seurat(srt, filename = "chen2017_hpt.h5Seurat", overwrite = T)
+Convert("chen2017_hpt.h5Seurat", dest = "h5ad")
+
+```
+
+
